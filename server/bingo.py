@@ -8,6 +8,8 @@ from typing import Optional
 
 from loguru import logger
 from PIL import Image, ImageDraw, ImageFont
+from pipecat.adapters.schemas.function_schema import FunctionSchema
+from pipecat.adapters.schemas.tools_schema import ToolsSchema
 from pipecat.frames.frames import (
     Frame,
     InterimTranscriptionFrame,
@@ -15,9 +17,8 @@ from pipecat.frames.frames import (
     OutputImageRawFrame,
     TranscriptionFrame,
 )
-from pipecat.pipeline.task import PipelineTask
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
-from pipecat.services.llm_service import FunctionCallParams
+from pipecat.services.llm_service import FunctionCallParams, LLMService
 
 from utils import load_file
 
@@ -42,9 +43,9 @@ class BingoWord:
 
 class Bingo:
 
-    def __init__(self):
+    def __init__(self, output: FrameProcessor):
         # Pipecat
-        self.task: PipelineTask = None
+        self.output = output
 
         # Setup states
         self.players: list[Player] = []
@@ -61,8 +62,13 @@ class Bingo:
         self.player_bold_font = ImageFont.truetype(font_path, 50)
         self.title_font = ImageFont.truetype(font_path, 55)
 
-    def set_task(self, task: PipelineTask):
-        self.task = task
+        # Sounds
+        asyncio.create_task(self.load_sounds())
+
+    async def load_sounds(self):
+        self.sounds["right"] = await self.load_sound_as_frame("word_right.wav")
+        self.sounds["wrong"] = await self.load_sound_as_frame("word_wrong.wav")
+        self.sounds["winner"] = await self.load_sound_as_frame("winner.wav")
 
     async def load_sound_as_frame(self, file_name: str) -> OutputAudioRawFrame:
         full_path = os.path.join(os.path.dirname(__file__), "sounds", file_name)
@@ -135,11 +141,11 @@ class Bingo:
             return
 
         if not valid_use:
-            await self.task.queue_frame(self.sounds["wrong"])
+            await self.play_sound("wrong")
             await params.result_callback(None)
             return
 
-        await self.task.queue_frame(self.sounds["right"])
+        await self.play_sound("right")
 
         bingo_word.said = True
         bingo_word.speaker = speaker
@@ -165,7 +171,7 @@ class Bingo:
             winner = speaker
 
         if winner is not None:
-            await self.task.queue_frame(self.sounds["winner"])
+            await self.play_sound("winner")
             await params.result_callback(
                 {
                     "winner": speaker.speaker_id,
@@ -179,6 +185,10 @@ class Bingo:
         logger.debug(f"Bingo Word Updated: {bingo_word}")
 
         await params.result_callback(None)
+
+    async def play_sound(self, sound: str) -> None:
+        if sound in self.sounds:
+            await self.output.queue_frame(self.sounds[sound])
 
     async def no_word_spoken(self, params: FunctionCallParams) -> None:
         await params.result_callback(None)
@@ -339,7 +349,7 @@ class Bingo:
             scoreboard_y += 70
 
         # Send the data
-        await self.task.queue_frame(
+        await self.output.queue_frame(
             OutputImageRawFrame(
                 image=img.tobytes(),
                 size=(1920, 1080),
@@ -347,9 +357,9 @@ class Bingo:
             )
         )
 
-    async def splash_screen(self) -> OutputImageRawFrame:
+    async def splash_screen(self) -> None:
         # Create a new image with a white background
-        img = Image.new("RGB", (1920, 1080), color="red")
+        img = Image.new("RGB", (1920, 1080), color="white")
         draw = ImageDraw.Draw(img)
 
         # Load a font
@@ -371,11 +381,105 @@ class Bingo:
         logger.info("BINGO: Splash screen sent")
 
         # Send the data
-        return OutputImageRawFrame(
-            image=img.tobytes(),
-            size=(1920, 1080),
-            format="RGB",
+        await self.output.queue_frame(
+            OutputImageRawFrame(
+                image=img.tobytes(),
+                size=(1920, 1080),
+                format="RGB",
+            )
         )
+
+    def register_functions(self, llm: LLMService) -> list[ToolsSchema]:
+
+        # Tool definitions
+        schema: list[FunctionSchema] = []
+
+        # Add a player to the game
+        llm.register_direct_function(self.add_player)
+        schema.append(
+            FunctionSchema(
+                name="add_player",
+                description="Use this tool to add a player to the game.",
+                properties={
+                    "speaker_id": {
+                        "type": "string",
+                        "description": "The speaker ID of the player.",
+                    },
+                    "name": {
+                        "type": "string",
+                        "description": "The first name of the player.",
+                    },
+                },
+                required=[
+                    "speaker_id",
+                    "name",
+                ],
+            )
+        )
+
+        # Get game words
+        llm.register_direct_function(self.get_words)
+        schema.append(
+            FunctionSchema(
+                name="get_words",
+                description="Use this tool to get the words for the game.",
+                properties={},
+                required=[],
+            )
+        )
+
+        # Extract words spoken
+        llm.register_direct_function(self.word_spoken)
+        schema.append(
+            FunctionSchema(
+                name="word_spoken",
+                description="Use this tool to record a word from the bingo list that was spoken. Accept misspelled words as valid. Only report words that are in the list.",
+                properties={
+                    "speaker_id": {
+                        "type": "string",
+                        "description": "The speaker ID of the player.",
+                    },
+                    "word": {
+                        "type": "string",
+                        "description": "The word that was spoken. Must be in the list.",
+                    },
+                    "valid_use": {
+                        "type": "boolean",
+                        "description": "Whether the word was used in a valid way (as part of a conversation and not as a statement).",
+                    },
+                },
+                required=[
+                    "speaker_id",
+                    "word",
+                    "valid_use",
+                ],
+            )
+        )
+
+        # No words spoken
+        llm.register_direct_function(self.no_word_spoken)
+        schema.append(
+            FunctionSchema(
+                name="no_word_spoken",
+                description="Use this tool when no bingo words has been spoken or you are not engaged in conversation.",
+                properties={},
+                required=[],
+            )
+        )
+
+        # Start the game again
+        llm.register_direct_function(self.start_over)
+        schema.append(
+            FunctionSchema(
+                name="start_over",
+                description="Use this tool to start a new game.",
+                properties={},
+                required=[],
+            )
+        )
+
+        # Return the tool schema
+        return ToolsSchema(standard_tools=schema)
 
 
 class WordFinder(FrameProcessor):

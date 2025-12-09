@@ -40,5 +40,6 @@
     "quefrency",
     "diphthong",
     "glottal"
-  ]
+  ],
+  "other": ["Gen AI"]
 }
