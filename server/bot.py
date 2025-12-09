@@ -25,7 +25,6 @@ import os
 
 from dotenv import load_dotenv
 from loguru import logger
-from pipecat.frames.frames import LLMRunFrame
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
@@ -105,7 +104,7 @@ async def run_bot(transport: BaseTransport):
     rtvi = RTVIProcessor()
 
     # Bingo
-    bingo = Bingo(rtvi)
+    bingo = Bingo()
     wf = WordFinder(bingo)
 
     # Pipeline - assembled from reusable components
@@ -139,7 +138,7 @@ async def run_bot(transport: BaseTransport):
     @rtvi.event_handler("on_client_ready")
     async def on_client_ready(rtvi):
         await rtvi.set_bot_ready()
-        await task.queue_frames([await bingo.splash_screen(), LLMRunFrame()])
+        await task.queue_frames([await bingo.splash_screen()])  # , LLMRunFrame()])
 
     @transport.event_handler("on_client_connected")
     async def on_client_connected(transport, client):
@@ -195,9 +194,9 @@ async def bot(runner_args: RunnerArguments):
                     audio_in_filter=krisp_filter,
                     audio_out_enabled=True,
                     video_out_enabled=True,
-                    video_out_is_live=True,
-                    video_out_width=1024,
-                    video_out_height=768,
+                    video_out_is_live=False,
+                    video_out_width=1920,
+                    video_out_height=1080,
                 ),
             )
         case SmallWebRTCRunnerArguments():
@@ -209,9 +208,9 @@ async def bot(runner_args: RunnerArguments):
                     audio_in_enabled=True,
                     audio_in_filter=krisp_filter,
                     audio_out_enabled=True,
-                    video_out_is_live=True,
-                    video_out_width=1024,
-                    video_out_height=768,
+                    video_out_is_live=False,
+                    video_out_width=1920,
+                    video_out_height=1080,
                 ),
             )
         case _:

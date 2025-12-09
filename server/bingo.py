@@ -4,7 +4,7 @@ import os
 import random
 import wave
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Optional
 
 from loguru import logger
 from PIL import Image, ImageDraw, ImageFont
@@ -17,10 +17,6 @@ from pipecat.frames.frames import (
 )
 from pipecat.pipeline.task import PipelineTask
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
-from pipecat.processors.frameworks.rtvi import (
-    RTVIProcessor,
-    RTVIServerMessageFrame,
-)
 from pipecat.services.llm_service import FunctionCallParams
 
 from utils import load_file
@@ -46,10 +42,9 @@ class BingoWord:
 
 class Bingo:
 
-    def __init__(self, rtvi: RTVIProcessor):
+    def __init__(self):
         # Pipecat
         self.task: PipelineTask = None
-        self.rtvi = rtvi
 
         # Setup states
         self.players: list[Player] = []
@@ -381,9 +376,6 @@ class Bingo:
             size=(1920, 1080),
             format="RGB",
         )
-
-    async def send_rtvi_message(self, data: dict[str, Any]) -> None:
-        await self.rtvi.push_frame(RTVIServerMessageFrame(data=data))
 
 
 class WordFinder(FrameProcessor):
