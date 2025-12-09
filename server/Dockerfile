@@ -1,5 +1,8 @@
 FROM dailyco/pipecat-base:latest
 
+# Install dependencies
+RUN apt install -y git
+
 # Enable bytecode compilation
 ENV UV_COMPILE_BYTECODE=1
 
@@ -7,7 +10,7 @@ ENV UV_COMPILE_BYTECODE=1
 ENV UV_LINK_MODE=copy
 
 # Uncomment if you wish to print a summary of the features available in the base image
-# ENV PCC_LOG_FEATURES_SUMMARY=true
+ENV PCC_LOG_FEATURES_SUMMARY=true
 
 # Install the project's dependencies using the lockfile and settings
 RUN --mount=type=cache,target=/root/.cache/uv \
@@ -17,3 +20,13 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 # Copy the application code
 COPY ./bot.py bot.py
+COPY ./bot.md bot.md
+COPY ./utils.py utils.py
+COPY ./words.json words.json
+COPY ./sounds sounds
+COPY ./dejavu.ttf dejavu.ttf
+
+# Download models
+COPY ./models.py models.py
+RUN uv run models.py
+RUN rm models.py

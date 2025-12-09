@@ -20,11 +20,11 @@ Run the bot using::
     uv run bot.py
 """
 
+import datetime
 import os
 
 from dotenv import load_dotenv
 from loguru import logger
-from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.frames.frames import LLMRunFrame
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
@@ -48,6 +48,9 @@ from pipecat.transports.smallwebrtc.connection import SmallWebRTCConnection
 from pipecat.transports.smallwebrtc.transport import SmallWebRTCTransport
 from pipecatcloud import PipecatSessionArguments, SmallWebRTCSessionManager
 
+from bingo import Bingo, WordFinder
+from utils import load_file
+
 load_dotenv(override=True)
 
 # Create a global session manager instance for SmallWebRTC
@@ -58,6 +61,9 @@ async def run_bot(transport: BaseTransport):
     """Main bot logic."""
     logger.info("Starting bot")
 
+    # Agent context
+    AGENT_CONTEXT = load_file("bot.md", __file__)
+
     # Speech-to-Text service
     stt = SpeechmaticsSTTService(
         api_key=os.getenv("SPEECHMATICS_API_KEY"),
@@ -65,7 +71,7 @@ async def run_bot(transport: BaseTransport):
         params=SpeechmaticsSTTService.InputParams(
             language="en",
             enable_vad=True,
-            preset="adaptive",
+            preset="smart_turn",
             speaker_active_format="@{speaker_id}: {text}",
             speaker_passive_format="@{speaker_id} [background]: {text}",
         ),
@@ -87,7 +93,9 @@ async def run_bot(transport: BaseTransport):
     messages = [
         {
             "role": "system",
-            "content": "You are a friendly AI assistant called Humphrey. Respond naturally and keep your answers conversational.",
+            "content": AGENT_CONTEXT.format(
+                time=datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            ),
         },
     ]
 
@@ -96,12 +104,17 @@ async def run_bot(transport: BaseTransport):
 
     rtvi = RTVIProcessor()
 
+    # Bingo
+    bingo = Bingo(rtvi)
+    wf = WordFinder(bingo)
+
     # Pipeline - assembled from reusable components
     pipeline = Pipeline(
         [
             transport.input(),
             rtvi,
             stt,
+            wf,
             context_aggregator.user(),
             llm,
             tts,
@@ -121,11 +134,12 @@ async def run_bot(transport: BaseTransport):
         ],
     )
 
+    bingo.set_task(task)
+
     @rtvi.event_handler("on_client_ready")
     async def on_client_ready(rtvi):
         await rtvi.set_bot_ready()
-        # Kick off the conversation
-        await task.queue_frames([LLMRunFrame()])
+        await task.queue_frames([await bingo.splash_screen(), LLMRunFrame()])
 
     @transport.event_handler("on_client_connected")
     async def on_client_connected(transport, client):

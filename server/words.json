@@ -1,0 +1,44 @@
+{
+  "obvious": [
+    "latency",
+    "utterance",
+    "streaming",
+    "token",
+    "context",
+    "prompt",
+    "model",
+    "transcript",
+    "channel",
+    "callback",
+    "session",
+    "agentic",
+    "multimodal",
+    "telemetry",
+    "vapi",
+    "vapicon"
+  ],
+  "hard": [
+    "diarization",
+    "prosody",
+    "sampling",
+    "decoder",
+    "embedding",
+    "phoneme",
+    "inference",
+    "alignment",
+    "resampler",
+    "hallucinate"
+  ],
+  "obscure": [
+    "vocoder",
+    "jitter",
+    "spectral",
+    "phonotactic",
+    "entropy",
+    "allophone",
+    "cepstrum",
+    "quefrency",
+    "diphthong",
+    "glottal"
+  ]
+}
