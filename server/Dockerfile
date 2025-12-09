@@ -26,6 +26,7 @@ COPY ./utils.py utils.py
 COPY ./words.json words.json
 COPY ./sounds sounds
 COPY ./dejavu.ttf dejavu.ttf
+COPY ./voices.json voices.json
 
 # Download models
 COPY ./models.py models.py

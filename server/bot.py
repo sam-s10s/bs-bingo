@@ -19,7 +19,7 @@ Run the bot using::
 
     uv run bot.py
 """
-
+import json
 import datetime
 import os
 
@@ -66,6 +66,7 @@ async def run_bot(transport: BaseTransport):
 
     # Agent context
     AGENT_CONTEXT = load_file("bot.md", __file__)
+    SPEAKERS = json.loads(load_file("voices.json", __file__))
 
     # Words used
     all_words = [word for category in WORDS.values() for word in category]
@@ -84,6 +85,7 @@ async def run_bot(transport: BaseTransport):
                 AdditionalVocabEntry(content="Speechmatics"),
                 *[AdditionalVocabEntry(content=word) for word in all_words],
             ],
+            known_speakers=SPEAKERS,
         ),
     )
 

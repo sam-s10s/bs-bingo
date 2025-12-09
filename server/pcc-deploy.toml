@@ -1,8 +1,9 @@
 agent_name = "bullshit"
-image = "sams10s/bullshit:0.1"
+image = "sams10s/bullshit:0.2"
 secret_set = "bullshit-secrets"
 agent_profile = "agent-1x"
 enable_krisp = true
+image_credentials = "sams10s-pull-secret"
 
 [scaling]
 	min_agents = 1
