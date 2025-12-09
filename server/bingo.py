@@ -119,7 +119,10 @@ class Bingo:
 
         logger.info(f"Bingo words: {self.bingo_words}")
         await params.result_callback(
-            {"bingo_words": [w.word for w in self.bingo_words]}
+            {
+                "bingo_words": [w.word for w in self.bingo_words],
+                "result": "words are now shown on screen.",
+            }
         )
 
     async def word_spoken(

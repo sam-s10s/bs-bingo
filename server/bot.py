@@ -20,7 +20,6 @@ Run the bot using::
     uv run bot.py
 """
 import datetime
-import json
 import os
 
 import aiohttp
@@ -34,7 +33,6 @@ from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.aggregators.llm_response_universal import (
     LLMContextAggregatorPair,
 )
-from pipecat.processors.frameworks.rtvi import RTVIObserver, RTVIProcessor
 from pipecat.runner.types import (
     DailyRunnerArguments,
     RunnerArguments,
@@ -81,9 +79,8 @@ async def run_bot(transport: BaseTransport):
             params=SpeechmaticsSTTService.InputParams(
                 language="en",
                 enable_vad=True,
-                preset="smart_turn",
-                speaker_active_format="@{speaker_id}: {text}",
-                speaker_passive_format="@{speaker_id} [background]: {text}",
+                preset="adaptive",
+                speaker_active_format="<{speaker_id}>{text}</{speaker_id}>",
                 additional_vocab=[
                     AdditionalVocabEntry(content="Speechmatics"),
                     *[AdditionalVocabEntry(content=word) for word in all_words],
@@ -129,14 +126,10 @@ async def run_bot(transport: BaseTransport):
         context = LLMContext(messages, tools=tools)
         context_aggregator = LLMContextAggregatorPair(context)
 
-        # RTVI (for local web)
-        rtvi = RTVIProcessor()
-
         # Pipeline - assembled from reusable components
         pipeline = Pipeline(
             [
                 transport.input(),
-                rtvi,
                 stt,
                 wf,
                 context_aggregator.user(),
@@ -153,14 +146,7 @@ async def run_bot(transport: BaseTransport):
                 enable_metrics=True,
                 enable_usage_metrics=True,
             ),
-            observers=[
-                RTVIObserver(rtvi),
-            ],
         )
-
-        @rtvi.event_handler("on_client_ready")
-        async def on_client_ready(rtvi):
-            await rtvi.set_bot_ready()
 
         @transport.event_handler("on_client_connected")
         async def on_client_connected(transport, client):
