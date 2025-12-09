@@ -1,0 +1,30 @@
+[project]
+name = "bullshit"
+version = "0.1.0"
+description = "Voice AI bot built with Pipecat"
+requires-python = ">=3.10"
+dependencies = [
+    "pipecat-ai[azure,daily,elevenlabs,runner,silero,speechmatics,webrtc]",
+    "pipecatcloud>=0.2.13",
+]
+
+[dependency-groups]
+dev = [
+    "pyright>=1.1.404,<2",
+    "ruff>=0.12.11,<1",
+]
+
+[tool.ruff]
+line-length = 100
+[tool.ruff.lint]
+select = ["I"]
+
+[tool.uv.sources]
+speechmatics-voice = { path = "../../../speechmatics-python-sdk/sdk/voice", editable = true }
+pipecat-ai = { path = "../../pipecat", editable = true }
+
+[tool.uv]
+override-dependencies = [
+    "speechmatics-voice[smart]>=0.0.0",
+    "pipecat-ai[azure,daily,elevenlabs,google,runner,silero,speechmatics,webrtc]>=0.0.0",
+]
