@@ -39,6 +39,7 @@ from pipecat.runner.types import (
     SmallWebRTCRunnerArguments,
 )
 from pipecat.services.azure.llm import AzureLLMService
+from pipecat.services.elevenlabs.tts import ElevenLabsTTSService
 from pipecat.services.speechmatics.stt import (
     AdditionalVocabEntry,
     SpeechmaticsSTTService,
@@ -90,11 +91,17 @@ async def run_bot(transport: BaseTransport):
         )
 
         # Text-to-Speech service
-        tts = SpeechmaticsTTSService(
-            api_key=os.getenv("SPEECHMATICS_API_KEY"),
-            voice_id="theo",
-            aiohttp_session=session,
-        )
+        if os.getenv("ELEVENLABS_API_KEY"):
+            tts = ElevenLabsTTSService(
+                api_key=os.getenv("ELEVENLABS_API_KEY"),
+                voice_id=os.getenv("ELEVENLABS_VOICE_ID"),
+            )
+        else:
+            tts = SpeechmaticsTTSService(
+                api_key=os.getenv("SPEECHMATICS_API_KEY"),
+                voice_id="theo",
+                aiohttp_session=session,
+            )
 
         # LLM service
         llm = AzureLLMService(
