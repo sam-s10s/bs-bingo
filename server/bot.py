@@ -19,8 +19,8 @@ Run the bot using::
 
     uv run bot.py
 """
-import json
 import datetime
+import json
 import os
 
 from dotenv import load_dotenv
