@@ -23,6 +23,7 @@ import datetime
 import json
 import os
 
+import aiohttp
 from dotenv import load_dotenv
 from loguru import logger
 from pipecat.frames.frames import LLMRunFrame
@@ -40,11 +41,11 @@ from pipecat.runner.types import (
     SmallWebRTCRunnerArguments,
 )
 from pipecat.services.azure.llm import AzureLLMService
-from pipecat.services.elevenlabs.tts import ElevenLabsTTSService
 from pipecat.services.speechmatics.stt import (
     AdditionalVocabEntry,
     SpeechmaticsSTTService,
 )
+from pipecat.services.speechmatics.tts import SpeechmaticsTTSService
 from pipecat.transports.base_transport import BaseTransport, TransportParams
 from pipecat.transports.daily.transport import DailyParams, DailyTransport
 from pipecat.transports.smallwebrtc.connection import SmallWebRTCConnection
@@ -66,113 +67,116 @@ async def run_bot(transport: BaseTransport):
 
     # Agent context
     AGENT_CONTEXT = load_file("bot.md", __file__)
-    SPEAKERS = json.loads(load_file("voices.json", __file__))
+    # SPEAKERS = json.loads(load_file("voices.json", __file__))
 
     # Words used
     all_words = [word for category in WORDS.values() for word in category]
 
-    # Speech-to-Text service
-    stt = SpeechmaticsSTTService(
-        api_key=os.getenv("SPEECHMATICS_API_KEY"),
-        base_url=os.getenv("SPEECHMATICS_RT_URL", None),
-        params=SpeechmaticsSTTService.InputParams(
-            language="en",
-            enable_vad=True,
-            preset="smart_turn",
-            speaker_active_format="@{speaker_id}: {text}",
-            speaker_passive_format="@{speaker_id} [background]: {text}",
-            additional_vocab=[
-                AdditionalVocabEntry(content="Speechmatics"),
-                *[AdditionalVocabEntry(content=word) for word in all_words],
-            ],
-            known_speakers=SPEAKERS,
-        ),
-    )
+    async with aiohttp.ClientSession() as session:
 
-    # Text-to-Speech service
-    tts = ElevenLabsTTSService(
-        api_key=os.getenv("ELEVENLABS_API_KEY"),
-        voice_id=os.getenv("ELEVENLABS_VOICE_ID"),
-    )
-
-    # LLM service
-    llm = AzureLLMService(
-        model=os.getenv("AZURE_CHATGPT_MODEL"),
-        api_key=os.getenv("AZURE_CHATGPT_API_KEY"),
-        endpoint=os.getenv("AZURE_CHATGPT_ENDPOINT"),
-    )
-
-    messages = [
-        {
-            "role": "system",
-            "content": AGENT_CONTEXT.format(
-                time=datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        # Speech-to-Text service
+        stt = SpeechmaticsSTTService(
+            api_key=os.getenv("SPEECHMATICS_API_KEY"),
+            base_url=os.getenv("SPEECHMATICS_RT_URL", None),
+            params=SpeechmaticsSTTService.InputParams(
+                language="en",
+                enable_vad=True,
+                preset="smart_turn",
+                speaker_active_format="@{speaker_id}: {text}",
+                speaker_passive_format="@{speaker_id} [background]: {text}",
+                additional_vocab=[
+                    AdditionalVocabEntry(content="Speechmatics"),
+                    *[AdditionalVocabEntry(content=word) for word in all_words],
+                ],
+                # known_speakers=SPEAKERS,
             ),
-        },
-    ]
+        )
 
-    # Transport output
-    transport_output = transport.output()
+        # Text-to-Speech service
+        tts = SpeechmaticsTTSService(
+            api_key=os.getenv("SPEECHMATICS_API_KEY"),
+            voice_id="theo",
+            aiohttp_session=session,
+        )
 
-    # Bingo
-    bingo = Bingo(output=transport_output)
-    wf = WordFinder(bingo=bingo)
+        # LLM service
+        llm = AzureLLMService(
+            model=os.getenv("AZURE_CHATGPT_MODEL"),
+            api_key=os.getenv("AZURE_CHATGPT_API_KEY"),
+            endpoint=os.getenv("AZURE_CHATGPT_ENDPOINT"),
+        )
 
-    # Register functions
-    tools = bingo.register_functions(llm)
-
-    # LLM context (with tools)
-    context = LLMContext(messages, tools=tools)
-    context_aggregator = LLMContextAggregatorPair(context)
-
-    # RTVI (for local web)
-    rtvi = RTVIProcessor()
-
-    # Pipeline - assembled from reusable components
-    pipeline = Pipeline(
-        [
-            transport.input(),
-            rtvi,
-            stt,
-            wf,
-            context_aggregator.user(),
-            llm,
-            tts,
-            transport_output,
-            context_aggregator.assistant(),
+        messages = [
+            {
+                "role": "system",
+                "content": AGENT_CONTEXT.format(
+                    time=datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                ),
+            },
         ]
-    )
 
-    task = PipelineTask(
-        pipeline,
-        params=PipelineParams(
-            enable_metrics=True,
-            enable_usage_metrics=True,
-        ),
-        observers=[
-            RTVIObserver(rtvi),
-        ],
-    )
+        # Transport output
+        transport_output = transport.output()
 
-    @rtvi.event_handler("on_client_ready")
-    async def on_client_ready(rtvi):
-        await rtvi.set_bot_ready()
+        # Bingo
+        bingo = Bingo(output=transport_output)
+        wf = WordFinder(bingo=bingo)
 
-    @transport.event_handler("on_client_connected")
-    async def on_client_connected(transport, client):
-        logger.info("Client connected")
-        await bingo.splash_screen()
-        await bingo.play_sound("winner")
-        await task.queue_frames([LLMRunFrame()])
+        # Register functions
+        tools = bingo.register_functions(llm)
 
-    @transport.event_handler("on_client_disconnected")
-    async def on_client_disconnected(transport, client):
-        logger.info("Client disconnected")
-        await task.cancel()
+        # LLM context (with tools)
+        context = LLMContext(messages, tools=tools)
+        context_aggregator = LLMContextAggregatorPair(context)
 
-    runner = PipelineRunner(handle_sigint=False)
+        # RTVI (for local web)
+        rtvi = RTVIProcessor()
 
-    await runner.run(task)
+        # Pipeline - assembled from reusable components
+        pipeline = Pipeline(
+            [
+                transport.input(),
+                rtvi,
+                stt,
+                wf,
+                context_aggregator.user(),
+                llm,
+                tts,
+                transport_output,
+                context_aggregator.assistant(),
+            ]
+        )
+
+        task = PipelineTask(
+            pipeline,
+            params=PipelineParams(
+                enable_metrics=True,
+                enable_usage_metrics=True,
+            ),
+            observers=[
+                RTVIObserver(rtvi),
+            ],
+        )
+
+        @rtvi.event_handler("on_client_ready")
+        async def on_client_ready(rtvi):
+            await rtvi.set_bot_ready()
+
+        @transport.event_handler("on_client_connected")
+        async def on_client_connected(transport, client):
+            logger.info("Client connected")
+            await bingo.splash_screen()
+            await bingo.play_sound("winner")
+            await task.queue_frames([LLMRunFrame()])
+
+        @transport.event_handler("on_client_disconnected")
+        async def on_client_disconnected(transport, client):
+            logger.info("Client disconnected")
+            await task.cancel()
+
+        runner = PipelineRunner(handle_sigint=False)
+
+        await runner.run(task)
 
 
 async def bot(runner_args: RunnerArguments):
