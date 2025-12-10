@@ -95,6 +95,10 @@ async def run_bot(transport: BaseTransport):
             tts = ElevenLabsTTSService(
                 api_key=os.getenv("ELEVENLABS_API_KEY"),
                 voice_id=os.getenv("ELEVENLABS_VOICE_ID"),
+                model="eleven_turbo_v2_5",
+                params=ElevenLabsTTSService.InputParams(
+                    stability=0.5, similarity_boost=0.75
+                ),
             )
         else:
             tts = SpeechmaticsTTSService(
